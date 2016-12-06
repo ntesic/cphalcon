@@ -2638,7 +2638,7 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 	protected function _preSaveRelatedRecords(<AdapterInterface> connection, related) -> boolean
 	{
 		var className, manager, type, relation, columns, referencedFields,
-			referencedModel, message, nesting, name, record;
+			referencedModel, message, nesting, name, record, key, column;
 
 		let nesting = false;
 
@@ -2677,11 +2677,6 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 						referencedModel = relation->getReferencedModel(),
 						referencedFields = relation->getReferencedFields();
 
-					if typeof columns == "array" {
-						connection->rollback(nesting);
-						throw new Exception("Not implemented");
-					}
-
 					/**
 					 * If dynamic update is enabled, saving the record must not take any action
 					 */
@@ -2716,7 +2711,13 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 					 * Read the attribute from the referenced model and assigns it to the current model
 					 * Assign it to the model
 					 */
-					let this->{columns} = record->readAttribute(referencedFields);
+					if typeof columns == "array" {
+					    for column, key in columns {
+					        let this->{column} = record->readAttribute(referencedFields[key]);
+					    }
+					} else {
+					    let this->{columns} = record->readAttribute(referencedFields);
+					}
 				}
 			}
 		}
@@ -2736,7 +2737,7 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 		var nesting, className, manager, relation, name, record, message,
 			columns, referencedModel, referencedFields, relatedRecords, value,
 			recordAfter, intermediateModel, intermediateFields, intermediateValue,
-			intermediateModelName, intermediateReferencedFields;
+			intermediateModelName, intermediateReferencedFields, column, key, values=[];
 		boolean isThrough;
 
 		let nesting = false,
@@ -2767,11 +2768,6 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 					referencedModel = relation->getReferencedModel(),
 					referencedFields = relation->getReferencedFields();
 
-				if typeof columns == "array" {
-					connection->rollback(nesting);
-					throw new Exception("Not implemented");
-				}
-
 				/**
 				 * Create an implicit array for has-many/has-one records
 				 */
@@ -2781,10 +2777,17 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 					let relatedRecords = record;
 				}
 
-				if !fetch value, this->{columns} {
-					connection->rollback(nesting);
-					throw new Exception("The column '" . columns . "' needs to be present in the model");
-				}
+                if typeof columns == "array" {
+                    for key, column in columns {
+                        let values[] = this->{column};
+                    }
+                } else {
+				    if !fetch value, this->{columns} {
+					    connection->rollback(nesting);
+					    throw new Exception("The column '" . columns . "' needs to be present in the model");
+				    }
+                }
+
 
 				/**
 				 * Get the value of the field from the current model
@@ -2811,7 +2814,13 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 						/**
 						 * Assign the value to the
 						 */
-						recordAfter->writeAttribute(referencedFields, value);
+						if typeof columns == "array" {
+						    for column in values {
+						        recordAfter->writeAttribute(referencedFields[column],values[column]);
+						    }
+						} else {
+						    recordAfter->writeAttribute(referencedFields, value);
+						}
 					}
 
 					/**
@@ -2845,6 +2854,11 @@ abstract class Model implements EntityInterface, ModelInterface, ResultInterface
 					}
 
 					if isThrough {
+
+					    if typeof column == "array" {
+					        connection->rollback(nesting);
+					        throw new Exception("Not implemented");
+					    }
 
 						/**
 						 * Create a new instance of the intermediate model
